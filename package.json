@@ -1,0 +1,17 @@
+{
+  "name": "ouote-shogi-online",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test/core.test.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "dev:local": "node tools/dev-server.mjs",
+    "build:public": "python tools/build_public.py"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0",
+    "ws": "^8.18.0"
+  }
+}
