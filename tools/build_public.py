@@ -26,6 +26,11 @@ body { margin: 0; overscroll-behavior: none; -webkit-user-select: none; user-sel
 input { -webkit-user-select: text; user-select: text; }
 '''
 src = src.replace('[hidden] { display: none !important; }', extra + '[hidden] { display: none !important; }', 1)
+# 画面内のスクリプトを app.js に出す(CSPでインラインスクリプトを禁止するため)
+import re
+m = list(re.finditer(r'<script>\n(.*?)</script>', src, re.S))[-1]
+(root / 'public' / 'app.js').write_text(m.group(1), encoding='utf-8')
+src = src[:m.start()] + '<script src="app.js"></script>' + src[m.end():]
 src = src.rstrip() + '\n</body>\n</html>\n'
 (root / 'public' / 'index.html').write_text(src, encoding='utf-8')
 print('built public/index.html', len(src))

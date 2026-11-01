@@ -6,5 +6,8 @@
   "durable_objects": {
     "bindings": [{ "name": "LOBBY", "class_name": "Lobby" }]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Lobby"] }]
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Lobby"] }],
+  // "1" にすると、同じIPのアカウント同士の対局もレート対象にします(友人と同じ家で遊ぶ場合など)。
+  // 初期値の "0" は、複数アカウントによるレート稼ぎを防ぐための設定です。
+  "vars": { "RATE_SAME_IP": "0" }
 }

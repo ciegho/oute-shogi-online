@@ -153,6 +153,13 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .nickrow { display: flex; align-items: center; gap: 10px; }
 .nickrow label { font-size: 12px; color: var(--ink2); letter-spacing: .06em; white-space: nowrap; }
 .nickrow input { flex: 1; min-width: 0; box-sizing: border-box; font: inherit; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
+.rank { list-style: none; padding: 0; margin: 0; display: grid; gap: 2px; font-variant-numeric: tabular-nums; }
+.rank li { display: grid; grid-template-columns: 2.2em 1fr auto auto; gap: 8px; align-items: baseline; padding: 6px 4px; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--ink); }
+.rank li.me { background: var(--hl); border-radius: 6px; }
+.rank .pos { font: 800 15px var(--f-disp); color: var(--ink2); text-align: right; }
+.rank .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank .rt { font: 800 16px var(--f-disp); }
+.rank .gm { font-size: 11px; color: var(--ink2); }
 .note { font-size: 12px; line-height: 1.6; color: var(--ink2); }
 .spin { width: 34px; height: 34px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; margin: 4px auto; }
 @media (prefers-reduced-motion: no-preference) { .spin { animation: sp 1s linear infinite; } }
@@ -205,6 +212,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       <button class="btn" data-mode="cpu1">CPUと対戦(後手)</button>
       <button class="btn" data-mode="2p">2人で対戦(1台を交互に・レートなし)</button>
       <button class="btn" id="btn-online" data-mode="online" disabled>オンライン対戦(接続中…)</button>
+      <button class="btn" id="btn-rank" disabled>ランキング</button>
     </div>
     <p class="note" id="online-note"></p>
   </div>
@@ -234,6 +242,15 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   </div>
 </div>
 
+<div class="overlay" id="rank" hidden>
+  <div class="sheet">
+    <h2>ランキング</h2>
+    <p class="note" id="rank-note">読み込み中…</p>
+    <ol class="rank" id="rank-list"></ol>
+    <button class="btn pri" id="rank-close" style="height:44px">閉じる</button>
+  </div>
+</div>
+
 <div class="overlay" id="promo" hidden></div>
 
 <script src="engine.js"></script>
@@ -249,6 +266,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   var G = null;
   var LEVELS = [{ n: '入門', r: 500 }, { n: 'ふつう', r: 1000 }, { n: '強い', r: 1300 }, { n: '強豪', r: 1500 }, { n: '達人', r: 1600 }];
   var level = 1;
+  var GOTE_WIN_MULT = 1.5;
 
   // ---- 保存(端末内) ----
   function load(key, def) { try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch (e) { return def; } }
@@ -258,6 +276,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     var R = loadRating(), opp = LEVELS[G.level].r, from = R.r;
     var e = 1 / (1 + Math.pow(10, (opp - R.r) / 400));
     var k = R.n < 10 ? 40 : 24;
+    if (score === 1 && G.view === 1) k *= GOTE_WIN_MULT;   // 後手で勝ったときは変動を1.5倍にする
     R.r = Math.max(100, R.r + Math.round(k * (score - e)));
     R.n++; if (score === 1) R.w++; else if (score === 0) R.l++; else R.d++;
     save('ouote-rating-v1', R);
@@ -325,9 +344,11 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       ok: ['オンライン対戦(レート戦)', 'レートの近い相手と自動で対戦します。相手が見つかるまで待機します。'],
       offline: ['オンライン対戦(つながりません)', '対戦サーバーに接続できません。公開サーバー上でこのページを開いたときだけ使えます。'],
       replaced: ['オンライン対戦(別の画面で使用中)', '別の画面でオンライン対戦が開かれています。こちらで使うには、ページを再読み込みしてください。'],
-      auth: ['オンライン対戦(本人確認に失敗)', '本人確認に失敗しました。ブラウザの保存データを消した場合は、以前のレーティングを引き継げません。']
+      auth: ['オンライン対戦(本人確認に失敗)', '本人確認に失敗しました。ブラウザの保存データを消した場合は、以前のレーティングを引き継げません。'],
+      limit: ['オンライン対戦(登録の上限)', 'この回線から今日作れるアカウントの上限に達しました。明日もう一度お試しください。'],
+      busy: ['オンライン対戦(接続が多すぎます)', 'この回線からの接続が多すぎます。他の画面を閉じてから、ページを再読み込みしてください。']
     }[st];
-    b.textContent = t[0]; b.disabled = st !== 'ok'; $('online-note').textContent = t[1];
+    b.textContent = t[0]; b.disabled = st !== 'ok'; $('btn-rank').disabled = st !== 'ok'; $('online-note').textContent = t[1];
     void n;
   }
   function send(o) {
@@ -352,7 +373,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     ws.onclose = function () {
       clearInterval(NET.ping);
       if (NET.ws === ws) NET.ws = null;
-      if (NET.state === 'replaced' || NET.state === 'auth') return;
+      if (NET.state === 'replaced' || NET.state === 'auth' || NET.state === 'limit' || NET.state === 'busy') return;
       if (NET.state === 'ok') setOnlineState('init');
       if (G && G.online && !G.over) { G.netErr = true; drawPanel(); }
       if (Q.on) searchInfo('接続が切れました。再接続しています…');
@@ -390,14 +411,35 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       case 'matched': enterMatch(m); break;
       case 'state': onState(m); break;
       case 'end': onEnd(m); break;
+      case 'sping': send({ t: 'spong', n: m.n }); break;   // サーバーが通信の遅れを測る
+      case 'rank': showRank(m); break;
       case 'error':
         if (m.code === 'replaced') { setOnlineState('replaced'); stopSearch(false); }
         else if (m.code === 'auth') setOnlineState('auth');
+        else if (m.code === 'limit') setOnlineState('limit');
+        else if (m.code === 'busy' || m.code === 'full') setOnlineState('busy');
+        else if (m.code === 'locked') setOnlineState('auth');
+        else if (m.code === 'flood') setOnlineState('init');
         break;
       default: break;
     }
   }
 
+  function showRank(m) {
+    var list = $('rank-list');
+    list.textContent = '';
+    $('rank-note').textContent = m.list.length
+      ? m.min + '局以上の人が対象です。' + (m.me ? 'あなたは ' + m.me.rank + '位 / ' + m.total + '人' : 'あなたはまだ圏外です(' + m.min + '局以上で載ります)')
+      : 'まだランキングに載っている人がいません(' + m.min + '局以上で載ります)。';
+    m.list.forEach(function (x, i) {
+      var li = document.createElement('li');
+      if (m.me && m.me.rank === i + 1) li.className = 'me';
+      [['pos', i + 1], ['nm', x.name], ['rt', x.r], ['gm', x.n + '局']].forEach(function (c) {
+        var sp = document.createElement('span'); sp.className = c[0]; sp.textContent = c[1]; li.appendChild(sp);
+      });
+      list.appendChild(li);
+    });
+  }
   function searchInfo(msg) { $('search-info').textContent = msg; }
   function updateSearchInfo() {
     if (!Q.on) return;
@@ -430,7 +472,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       mode: 'online', view: m.side, st: st, legal: S.legalMoves(st), time: [TIME, TIME], last: performance.now(),
       reps: {}, sel: null, pending: null, over: false, winner: null, reason: null, n: 0, arm: false, thinking: false,
       level: level, rd: null, moves: [], netErr: false,
-      online: { mid: m.mid, oppName: m.oppName, oppR: m.oppR, myR: m.myR }
+      online: { mid: m.mid, oppName: m.oppName, oppR: m.oppR, myR: m.myR, rated: m.rated !== false, why: m.why || null, bonus: false }
     };
     G.reps[S.key(st)] = 1;
     $('menu').hidden = true; $('promo').hidden = true; $('search').hidden = true;
@@ -470,12 +512,13 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   function onEnd(m) {
     var g = G;
     if (!g || !g.online || g.online.mid !== m.mid) return;
-    g.rd = m.rd; NET.rating = m.rating;
+    g.rd = m.rd; NET.rating = m.rating; g.online.rated = m.rated !== false; g.online.why = m.why || null; g.online.bonus = !!m.bonus;
     if (!g.over) finish(m.winner, m.reason, true);
     else { g.winner = m.winner; g.reason = m.reason; render(); }
   }
 
   function $(id) { return document.getElementById(id); }
+  function esc(t) { return String(t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function kanji(pc) {
     if (pc.t === 'K') return KANJI.K[pc.o];
     return KANJI[pc.t][pc.p ? 1 : 0];
@@ -649,7 +692,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   function strip(pos, s) {
     var mark = s === 0 ? '▲' : '△';
     $('strip-' + pos).innerHTML =
-      '<div class="who"><span class="side">' + mark + sideName(s) + '</span><span class="name">' + whoLabel(s) + '</span></div>' +
+      '<div class="who"><span class="side">' + mark + sideName(s) + '</span><span class="name">' + esc(whoLabel(s)) + '</span></div>' +
       '<div class="clock" id="clk-' + pos + '"></div>';
   }
   function handHtml(s, active) {
@@ -711,9 +754,13 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     return { check: '王手で決着', time: '時間切れ', resign: '投了', nomove: '指せる手がありません', repetition: '同一局面4回' }[r] || '';
   }
   function rateLine() {
+    if (G.mode === 'online' && G.online && G.online.rated === false) {
+      return '<div class="sub">' + ({ same_ip: '同じ回線同士の対戦のため', quick: '短手数での勝利のため' }[G.online.why] || '同じ相手との連戦のため') + 'レーティングは変動しません</div>';
+    }
     if (!G.rd) return '';
     var d = G.rd.to - G.rd.from;
-    return '<div class="sub">' + (G.mode === 'online' ? 'オンラインレーティング ' : 'レーティング ') + G.rd.from + ' → <span class="delta">' + G.rd.to + '(' + (d >= 0 ? '+' : '') + d + ')</span></div>';
+    var bonus = (G.mode === 'online' ? (G.online && G.online.bonus) : (G.view === 1 && G.winner === 1));
+    return '<div class="sub">' + (G.mode === 'online' ? 'オンラインレーティング ' : 'レーティング ') + G.rd.from + ' → <span class="delta">' + G.rd.to + '(' + (d >= 0 ? '+' : '') + d + ')</span>' + (bonus ? ' 後手勝利ボーナス×1.5' : '') + '</div>';
   }
   function drawPanel() {
     var p = $('panel'), st = G.st;
@@ -731,7 +778,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     }
     var msg;
     if (G.mode === 'cpu') msg = G.thinking ? 'CPUが考えています…' : '<b>あなたの番です</b>';
-    else if (G.mode === 'online') msg = st.turn === G.view ? '<b>あなたの番です</b>' : '相手の番です' + (G.netErr ? '(再接続しています…)' : '');
+    else if (G.mode === 'online') msg = (st.turn === G.view ? '<b>あなたの番です</b>' : '相手の番です') + (G.netErr ? '(再接続しています…)' : '') + (G.online.rated === false ? ' ・ レート変動なし' : '');
     else msg = '<b>' + sideName(st.turn) + '番</b>';
     p.innerHTML = '<div class="status">' + (G.n + 1) + '手目 ・ ' + msg + '</div>' +
       '<div class="row"><button class="btn' + (G.arm ? ' warn' : '') + '" id="b-resign">' + (G.arm ? 'もう一度押すと投了' : '投了') + '</button></div>';
@@ -754,9 +801,15 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   });
   document.querySelector('.menu .btns').addEventListener('click', function (e) {
     var b = e.target.closest('button');
-    if (!b || b.disabled) return;
+    if (!b || b.disabled || !b.dataset.mode) return;
     if (b.dataset.mode === 'online') startSearch(); else startGame(b.dataset.mode);
   });
+  $('btn-rank').addEventListener('click', function () {
+    $('rank-note').textContent = '読み込み中…'; $('rank-list').textContent = '';
+    $('rank').hidden = false; send({ t: 'rank' });
+  });
+  $('rank-close').onclick = function () { $('rank').hidden = true; };
+  $('rank').addEventListener('click', function (e) { if (e.target === $('rank')) $('rank').hidden = true; });
   $('search-cancel').onclick = function () { stopSearch(true); refreshMenu(); $('menu').hidden = false; };
   netInit();
   ['hand-top', 'hand-bot'].forEach(function (id) {
